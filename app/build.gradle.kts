@@ -21,9 +21,29 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("KEYSTORE_PATH") ?: "shiping-release.jks"
+            storeFile = rootProject.file(keystorePath)
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "shiping123"
+            keyAlias = System.getenv("KEY_ALIAS") ?: "shiping"
+            keyPassword = System.getenv("KEY_PASSWORD") ?: "shiping123"
+        }
+    }
+
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
