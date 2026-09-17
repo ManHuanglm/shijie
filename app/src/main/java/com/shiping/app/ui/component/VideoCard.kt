@@ -1,19 +1,19 @@
 package com.shiping.app.ui.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,39 +33,39 @@ import com.shiping.app.data.model.Vod
 fun VideoCard(
     vod: Vod,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     Card(
-        onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.clickable { onClick() },
         shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(2f / 3f)
-                    .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                    .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)),
             ) {
                 if (vod.safePic.isNotBlank()) {
                     AsyncImage(
                         model = vod.safePic,
                         contentDescription = vod.vodName,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
                     )
                 } else {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.surface),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.Center,
                     ) {
-                        androidx.compose.material3.Icon(
+                        Icon(
                             imageVector = Icons.Default.PlayCircle,
                             contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.3f)
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
                         )
                     }
                 }
@@ -76,10 +76,14 @@ fun VideoCard(
                             .align(Alignment.TopEnd)
                             .padding(4.dp)
                             .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xCCE94560))
-                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
                     ) {
-                        Text(text = score, color = Color.White, fontSize = 10.sp)
+                        Text(
+                            text = score,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontSize = 10.sp,
+                        )
                     }
                 }
                 // 集数/备注 底部渐变
@@ -90,17 +94,17 @@ fun VideoCard(
                             .fillMaxWidth()
                             .background(
                                 Brush.verticalGradient(
-                                    listOf(Color.Transparent, Color(0xCC000000))
-                                )
+                                    listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)),
+                                ),
                             )
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
                     ) {
                         Text(
                             text = vod.vodRemarks,
                             color = Color.White,
                             fontSize = 11.sp,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
@@ -111,13 +115,13 @@ fun VideoCard(
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 if (vod.typeName.isNotBlank()) {
                     Text(
                         text = vod.typeName,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

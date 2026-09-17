@@ -1,6 +1,7 @@
 package com.shiping.app.data.model
 
 import com.google.gson.annotations.SerializedName
+import com.shiping.app.util.Constants
 
 /**
  * 视频数据模型，同时兼容列表接口与详情接口返回字段
@@ -46,7 +47,7 @@ data class Vod(
     @SerializedName("vod_play_server") val vodPlayServer: String = "",
     @SerializedName("vod_play_note") val vodPlayNote: String = "",
     @SerializedName("vod_play_url") val vodPlayUrl: String = "",
-    @SerializedName("type_name") val typeName: String = ""
+    @SerializedName("type_name") val typeName: String = "",
 ) {
     /**
      * 解析播放源列表。
@@ -54,22 +55,25 @@ data class Vod(
      *       vod_play_url  = "ep1$url1#ep2$url2$$$ep1$url1"
      */
     fun parsePlaySources(): List<PlaySource> {
-        // MacCMS 分隔符: 源之间 $$$, 集之间 #, 集名与URL之间 $
-        val sourceSep = "\$\$\$"
-        val fromList = vodPlayFrom.split(sourceSep).filter { it.isNotBlank() }
-        val urlList = vodPlayUrl.split(sourceSep)
+        val fromList = vodPlayFrom.split(Constants.SEPARATOR_SOURCE).filter { it.isNotBlank() }
+        val urlList = vodPlayUrl.split(Constants.SEPARATOR_SOURCE)
         return fromList.mapIndexed { index, sourceName ->
-            val episodeStr = urlList.getOrNull(index) ?: ""
-            val episodes = episodeStr.split("#")
-                .filter { it.contains("$") }
+            val episodeStr = urlList.getOrNull(index).orEmpty()
+            val episodes = episodeStr.split(Constants.SEPARATOR_EPISODE)
+                .filter { it.contains(Constants.SEPARATOR_NAME_URL) }
                 .mapNotNull { ep ->
-                    val parts = ep.split("$", limit = 2)
-                    if (parts.size == 2) PlayEpisode(parts[0].trim(), parts[1].trim()) else null
+                    val parts = ep.split(Constants.SEPARATOR_NAME_URL, limit = 2)
+                    if (parts.size == 2) {
+                        PlayEpisode(parts[0].trim(), parts[1].trim())
+                    } else {
+                        null
+                    }
                 }
             PlaySource(sourceName.trim(), episodes)
         }.filter { it.episodes.isNotEmpty() }
     }
 
+    /** 优先取非空封面图 */
     val safePic: String
         get() = when {
             vodPic.isNotBlank() -> vodPic
@@ -77,16 +81,28 @@ data class Vod(
             vodPicSlide.isNotBlank() -> vodPicSlide
             else -> ""
         }
+
+    /**
+     * 用详情数据补全列表项缺失的封面/评分等字段。
+     * 列表接口(ac=list)通常不带 vod_pic，需要通过详情接口补全。
+     */
+    fun mergeWithDetail(detail: Vod): Vod = copy(
+        vodPic = detail.vodPic,
+        vodPicThumb = detail.vodPicThumb,
+        vodPicSlide = detail.vodPicSlide,
+        vodScore = detail.vodScore,
+        vodRemarks = detail.vodRemarks.ifBlank { vodRemarks },
+    )
 }
 
 /** 播放源 */
 data class PlaySource(
     val name: String,
-    val episodes: List<PlayEpisode>
+    val episodes: List<PlayEpisode>,
 )
 
 /** 单集 */
 data class PlayEpisode(
     val name: String,
-    val url: String
+    val url: String,
 )

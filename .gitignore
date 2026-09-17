@@ -24,3 +24,5 @@ captures/
 google-services.json
 .DS_Store
 Thumbs.db
+
+.trae/

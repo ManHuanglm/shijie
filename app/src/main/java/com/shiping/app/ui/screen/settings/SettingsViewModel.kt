@@ -9,7 +9,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -19,7 +18,11 @@ data class ApiManageUiState(
     val selectedIds: Set<Long> = emptySet(),
     val isTesting: Boolean = false,
     val testResults: Map<Long, ApiSourceRepository.TestResult> = emptyMap(),
-    val message: String? = null
+    val message: String? = null,
+    /** TVBox 配置导入进行中 */
+    val tvBoxLoading: Boolean = false,
+    /** 非空表示配置为多仓，待用户选择子配置（名称 to 地址） */
+    val tvBoxWarehouses: List<Pair<String, String>> = emptyList(),
 )
 
 class SettingsViewModel : ViewModel() {
@@ -103,8 +106,8 @@ class SettingsViewModel : ViewModel() {
                 ApiSourceEntity(
                     name = name.ifBlank { "未命名" },
                     url = url.trim(),
-                    note = note
-                )
+                    note = note,
+                ),
             )
             showMessage("导入成功")
         }
@@ -122,11 +125,50 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
-    /** 导出为文本 */
     suspend fun exportToText(): String = repository.exportToText()
 
-    /** 导出为 JSON */
     suspend fun exportToJson(): String = repository.exportToJson()
+
+    /** TVBox 配置导入：拉取解析单仓；多仓时先返回仓库列表待选 */
+    fun importTvBoxConfig(url: String) {
+        if (url.isBlank()) {
+            showMessage("请输入配置链接")
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(tvBoxLoading = true) }
+            val result = AppContainer.tvBoxConfigImporter.import(url.trim())
+            _uiState.update { state ->
+                when {
+                    result.error != null ->
+                        state.copy(tvBoxLoading = false, message = result.error)
+                    result.warehouses.isNotEmpty() ->
+                        state.copy(tvBoxLoading = false, tvBoxWarehouses = result.warehouses)
+                    else ->
+                        state.copy(tvBoxLoading = false, message = result.messageText())
+                }
+            }
+        }
+    }
+
+    /** 导入从多仓中选择的子配置 */
+    fun importTvBoxWarehouse(url: String, name: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(tvBoxLoading = true, tvBoxWarehouses = emptyList()) }
+            val result = AppContainer.tvBoxConfigImporter.import(url.trim(), name)
+            _uiState.update { state ->
+                state.copy(
+                    tvBoxLoading = false,
+                    message = result.error ?: result.messageText(),
+                    tvBoxWarehouses = result.warehouses,
+                )
+            }
+        }
+    }
+
+    fun dismissTvBoxWarehouses() {
+        _uiState.update { it.copy(tvBoxWarehouses = emptyList()) }
+    }
 
     /** 检测单个 API */
     fun testApi(source: ApiSourceEntity) {
@@ -136,9 +178,17 @@ class SettingsViewModel : ViewModel() {
             _uiState.update { state ->
                 state.copy(
                     isTesting = false,
-                    testResults = state.testResults + (source.id to result)
+                    testResults = state.testResults + (source.id to result),
                 )
             }
+        }
+    }
+
+    /** 检测任意 URL（供添加/编辑弹窗使用，不写入 testResults） */
+    fun testApiUrl(url: String) {
+        viewModelScope.launch {
+            val result = repository.testApi(url)
+            showMessage(if (result.success) "检测成功" else result.message)
         }
     }
 
@@ -173,7 +223,7 @@ class SettingsViewModel : ViewModel() {
                 it.copy(
                     isTesting = false,
                     testResults = it.testResults + results,
-                    message = "检测完成: $successCount/${targets.size} 个源可用"
+                    message = "检测完成: $successCount/${targets.size} 个源可用",
                 )
             }
         }
@@ -181,10 +231,6 @@ class SettingsViewModel : ViewModel() {
 
     private fun showMessage(msg: String) {
         _uiState.update { it.copy(message = msg) }
-    }
-
-    fun showTempMessage(msg: String) {
-        showMessage(msg)
     }
 
     fun consumeMessage() {

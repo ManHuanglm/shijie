@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shiping.app.data.model.ApiSourceEntity
 import com.shiping.app.data.model.Category
+import com.shiping.app.data.model.PlayHistoryEntity
 import com.shiping.app.data.model.Vod
 import com.shiping.app.di.AppContainer
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,13 +27,16 @@ data class HomeUiState(
     val total: Int = 0,
     val apiSources: List<ApiSourceEntity> = emptyList(),
     val currentApiId: Long? = null,
-    val currentApiName: String = ""
+    val currentApiName: String = "",
+    /** 继续观看：最近观看记录（按时间倒序，取前 N 条） */
+    val continueWatching: List<PlayHistoryEntity> = emptyList(),
 )
 
 class HomeViewModel : ViewModel() {
 
-    private val vodRepo = AppContainer.vodRepository
-    private val apiRepo = AppContainer.apiSourceRepository
+    private val vodRepository = AppContainer.vodRepository
+    private val apiSourceRepository = AppContainer.apiSourceRepository
+    private val playHistoryRepository = AppContainer.playHistoryRepository
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -40,15 +44,29 @@ class HomeViewModel : ViewModel() {
     init {
         loadApiSources()
         loadHome()
+        observeContinueWatching()
+    }
+
+    /** 订阅播放历史，驱动首页“继续观看” */
+    private fun observeContinueWatching() {
+        viewModelScope.launch {
+            playHistoryRepository.historyFlow.collect { history ->
+                _uiState.update { it.copy(continueWatching = history.take(CONTINUE_WATCHING_LIMIT)) }
+            }
+        }
     }
 
     private fun loadApiSources() {
         viewModelScope.launch {
-            apiRepo.getEnabled().collect { sources ->
-                val currentId = apiRepo.currentApiId.first()
-                val currentName = apiRepo.currentApiName()
+            apiSourceRepository.getEnabled().collect { sources ->
+                val currentId = apiSourceRepository.currentApiId.first()
+                val currentName = apiSourceRepository.currentApiName()
                 _uiState.update {
-                    it.copy(apiSources = sources, currentApiId = currentId, currentApiName = currentName)
+                    it.copy(
+                        apiSources = sources,
+                        currentApiId = currentId,
+                        currentApiName = currentName,
+                    )
                 }
             }
         }
@@ -56,22 +74,22 @@ class HomeViewModel : ViewModel() {
 
     fun loadHome() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null, page = 1, hasMore = true) }
+            val page = 1
+            _uiState.update { it.copy(isLoading = true, error = null, page = page, hasMore = true) }
             runCatching {
-                vodRepo.getHome(page = 1, typeId = _uiState.value.selectedTypeId)
+                vodRepository.getHome(page = page, typeId = _uiState.value.selectedTypeId)
             }.onSuccess { response ->
                 _uiState.update {
                     it.copy(
                         isLoading = false,
                         categories = response.classList.ifEmpty { it.categories },
                         vodList = response.list,
-                        page = 1,
-                        hasMore = 1 < response.pageCount,
-                        total = response.total
+                        page = page,
+                        hasMore = page < response.pageCount,
+                        total = response.total,
                     )
                 }
-                // 列表接口通常不带封面图，批量获取详情补全封面
-                fetchCovers(response.list.map { v -> v.vodId })
+                fetchCovers(response.list.map { it.vodId })
             }.onFailure { throwable ->
                 _uiState.update {
                     it.copy(isLoading = false, error = throwable.message ?: "加载失败")
@@ -80,29 +98,19 @@ class HomeViewModel : ViewModel() {
         }
     }
 
-    /**
-     * 批量获取封面图并合并到列表
-     */
+    /** 批量获取封面图并合并到列表 */
     private fun fetchCovers(ids: List<Int>) {
         if (ids.isEmpty()) return
         _uiState.update { it.copy(isLoadingCovers = true) }
         viewModelScope.launch {
-            runCatching { vodRepo.getDetails(ids) }
+            runCatching { vodRepository.getDetails(ids) }
                 .onSuccess { detailMap ->
                     _uiState.update { state ->
                         state.copy(
                             isLoadingCovers = false,
                             vodList = state.vodList.map { vod ->
-                                detailMap[vod.vodId]?.let { detail ->
-                                    vod.copy(
-                                        vodPic = detail.vodPic,
-                                        vodPicThumb = detail.vodPicThumb,
-                                        vodPicSlide = detail.vodPicSlide,
-                                        vodScore = detail.vodScore,
-                                        vodRemarks = detail.vodRemarks.ifBlank { vod.vodRemarks }
-                                    )
-                                } ?: vod
-                            }
+                                detailMap[vod.vodId]?.let { vod.mergeWithDetail(it) } ?: vod
+                            },
                         )
                     }
                 }
@@ -114,7 +122,9 @@ class HomeViewModel : ViewModel() {
 
     fun selectCategory(typeId: Int) {
         if (_uiState.value.selectedTypeId == typeId && _uiState.value.vodList.isNotEmpty()) return
-        _uiState.update { it.copy(selectedTypeId = typeId, vodList = emptyList(), page = 1, hasMore = true) }
+        _uiState.update {
+            it.copy(selectedTypeId = typeId, vodList = emptyList(), page = 1, hasMore = true)
+        }
         loadHome()
     }
 
@@ -124,7 +134,7 @@ class HomeViewModel : ViewModel() {
         _uiState.update { it.copy(isLoadingMore = true) }
         viewModelScope.launch {
             runCatching {
-                vodRepo.getHome(page = nextPage, typeId = _uiState.value.selectedTypeId)
+                vodRepository.getHome(page = nextPage, typeId = _uiState.value.selectedTypeId)
             }.onSuccess { response ->
                 val newList = response.list
                 _uiState.update {
@@ -132,11 +142,10 @@ class HomeViewModel : ViewModel() {
                         isLoadingMore = false,
                         vodList = it.vodList + newList,
                         page = nextPage,
-                        hasMore = nextPage < response.pageCount
+                        hasMore = nextPage < response.pageCount,
                     )
                 }
-                // 为新加载的列表补全封面
-                fetchCovers(newList.map { v -> v.vodId })
+                fetchCovers(newList.map { it.vodId })
             }.onFailure {
                 _uiState.update { it.copy(isLoadingMore = false) }
             }
@@ -146,7 +155,7 @@ class HomeViewModel : ViewModel() {
     /** 切换 API 源 */
     fun switchApi(source: ApiSourceEntity) {
         viewModelScope.launch {
-            apiRepo.setCurrentApiId(source.id)
+            apiSourceRepository.setCurrentApiId(source.id)
             _uiState.update {
                 it.copy(
                     currentApiId = source.id,
@@ -155,10 +164,15 @@ class HomeViewModel : ViewModel() {
                     categories = emptyList(),
                     selectedTypeId = 0,
                     page = 1,
-                    hasMore = true
+                    hasMore = true,
                 )
             }
             loadHome()
         }
+    }
+
+    companion object {
+        /** 继续观看展示条数上限 */
+        private const val CONTINUE_WATCHING_LIMIT = 20
     }
 }

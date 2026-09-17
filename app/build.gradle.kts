@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.shiping.app"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.shiping.app"
@@ -23,11 +23,18 @@ android {
 
     signingConfigs {
         create("release") {
-            val keystorePath = System.getenv("KEYSTORE_PATH") ?: "shiping-release.jks"
-            storeFile = rootProject.file(keystorePath)
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "shiping123"
-            keyAlias = System.getenv("KEY_ALIAS") ?: "shiping"
-            keyPassword = System.getenv("KEY_PASSWORD") ?: "shiping123"
+            // 签名信息仅从 CI 环境变量注入，禁止在版本库中硬编码密码；
+            // 本地缺少环境变量时由 buildTypes 回退 debug 签名
+            val keystorePath = System.getenv("KEYSTORE_PATH")
+            val storePass = System.getenv("KEYSTORE_PASSWORD")
+            val alias = System.getenv("KEY_ALIAS")
+            val keyPass = System.getenv("KEY_PASSWORD")
+            if (keystorePath != null && storePass != null && alias != null && keyPass != null) {
+                storeFile = rootProject.file(keystorePath)
+                storePassword = storePass
+                keyAlias = alias
+                keyPassword = keyPass
+            }
         }
     }
 
@@ -42,8 +49,13 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
+            // 本地无 CI 签名环境变量时回退 debug 签名，保证 assembleRelease 仍可构建安装
+            signingConfig = if (signingConfigs.getByName("release").storeFile != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -62,7 +74,11 @@ android {
         buildConfig = true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.8"
+        kotlinCompilerExtensionVersion = "1.5.14"
+    }
+    testOptions {
+        // JVM 单元测试中调用 android.* API（如 Log.println）返回默认值而非抛异常
+        unitTests.isReturnDefaultValues = true
     }
     packaging {
         resources {
@@ -107,11 +123,14 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
 
     // Media3 (ExoPlayer)
-    implementation("androidx.media3:media3-exoplayer:1.2.1")
-    implementation("androidx.media3:media3-exoplayer-hls:1.2.1")
-    implementation("androidx.media3:media3-exoplayer-dash:1.2.1")
-    implementation("androidx.media3:media3-ui:1.2.1")
-    implementation("androidx.media3:media3-common:1.2.1")
+    implementation("androidx.media3:media3-exoplayer:1.5.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
+    implementation("androidx.media3:media3-exoplayer-dash:1.5.1")
+    implementation("androidx.media3:media3-ui:1.5.1")
+    implementation("androidx.media3:media3-common:1.5.1")
+    implementation("androidx.media3:media3-transformer:1.5.1")
+    // 纯 Java 内置 MP4 封装器（避免部分设备平台 MPEG4Writer 原生崩溃）
+    implementation("androidx.media3:media3-muxer:1.5.1")
 
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.0.0")
@@ -122,9 +141,12 @@ dependencies {
     // Splash
     implementation("androidx.core:core-splashscreen:1.0.1")
 
-    // Accompanist (system UI controller)
-    implementation("com.google.accompanist:accompanist-systemuicontroller:0.32.0")
-
     // Gson
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // 拼音首字母（搜索联想用）
+    implementation("com.belerweb:pinyin4j:2.5.0")
+
+    // 单元测试
+    testImplementation("junit:junit:4.13.2")
 }

@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">视界</string>
+    <string name="download_channel_name">视频下载</string>
+    <string name="download_channel_description">后台视频缓存通知</string>
 </resources>

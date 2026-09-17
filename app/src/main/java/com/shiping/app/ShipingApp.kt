@@ -3,6 +3,7 @@ package com.shiping.app
 import android.app.Application
 import android.content.Context
 import com.shiping.app.di.AppContainer
+import com.shiping.app.util.AppLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -15,10 +16,12 @@ class ShipingApp : Application() {
     override fun onCreate() {
         super.onCreate()
         context = applicationContext
-        // 初始化默认 API 源和解析源
+        AppLog.init(this)
+        // 初始化默认 API 源、解析源和电视直播源
         appScope.launch {
-            AppContainer.apiSourceRepository.initDefaultSource()
-            AppContainer.parseSourceRepository.initDefaultSource()
+            runCatching { AppContainer.apiSourceRepository.initDefaultSource() }
+            runCatching { AppContainer.parseSourceRepository.initDefaultSource() }
+            runCatching { AppContainer.tvRepository.initDefaultSource() }
         }
     }
 
